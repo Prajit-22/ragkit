@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ragkit"
+version = "0.1.0"
+description = "A small, dependency-free retrieval-augmented generation toolkit"
+readme = "README.md"
+requires-python = ">=3.9"
+license = {text = "MIT"}
+authors = [{name = "Prajit Chaturvedi"}]
+keywords = ["rag", "retrieval", "bm25", "vector-search", "llm"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Topic :: Text Processing :: Indexing",
+]
+
+[tool.setuptools]
+packages = ["ragkit"]
