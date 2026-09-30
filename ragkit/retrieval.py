@@ -88,7 +88,7 @@ class VectorRetriever:
 
     def __init__(self, embedder: Embedder, store: Optional[InMemoryVectorStore] = None):
         self.embedder = embedder
-        self.store = store or InMemoryVectorStore()
+        self.store = store if store is not None else InMemoryVectorStore()
 
     def __len__(self) -> int:
         return len(self.store)
@@ -108,6 +108,8 @@ class HybridRetriever:
     """Reciprocal-rank fusion of a lexical and a dense retriever."""
 
     def __init__(self, lexical: BM25Retriever, dense: VectorRetriever, rrf_k: int = 60):
+        if rrf_k < 0:
+            raise ValueError("rrf_k must be nonnegative")
         self.lexical = lexical
         self.dense = dense
         self.rrf_k = rrf_k
@@ -121,6 +123,8 @@ class HybridRetriever:
 
     def search(self, query: str, k: int = 4,
                metadata_filter: Optional[Dict] = None) -> List[SearchResult]:
+        if k <= 0:
+            raise ValueError("k must be positive")
         fused: Dict[str, float] = {}
         documents: Dict[str, Document] = {}
         for retriever in (self.lexical, self.dense):
