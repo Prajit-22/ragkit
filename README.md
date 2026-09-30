@@ -73,7 +73,7 @@ ragkit/
   retrieval.py     BM25Retriever, VectorRetriever, HybridRetriever (RRF)
   llm.py           LLM protocol, EchoLLM, CallableLLM
   pipeline.py      RAGPipeline: ingest -> retrieve -> prompt -> answer
-tests/             35 unittest tests, stdlib only
+tests/             43 unittest tests, stdlib only
 examples/          offline end-to-end demo with a small markdown corpus
 ```
 
@@ -88,6 +88,16 @@ python -m unittest discover -s tests
 - `EchoLLM` answers extractively from the retrieved context, so tests and demos are deterministic and can never hallucinate.
 - `HashingEmbedder` uses feature hashing over tokens - retrieval quality is below a neural embedder, but the interface and pipeline are identical, so swapping in a real embedder is a two-line change.
 - BM25 filters out zero-score documents; vector search returns nearest neighbors by cosine similarity; the hybrid retriever fuses both rankings with reciprocal rank fusion (k=60).
+
+### Retriever boundaries
+
+`VectorRetriever(embedder, store=store)` uses the exact store you pass in,
+including an empty store. Adding or deleting through the retriever changes
+that same store. Omit `store` to get a fresh, independent in-memory store.
+
+All retrievers require `k > 0`. `HybridRetriever` requires `rrf_k >= 0`;
+the default is 60. A zero constant is valid, but weights the first rank more
+heavily. Hybrid metadata filters apply to both component rankings.
 
 ## License
 
