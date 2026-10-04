@@ -73,7 +73,7 @@ ragkit/
   retrieval.py     BM25Retriever, VectorRetriever, HybridRetriever (RRF)
   llm.py           LLM protocol, EchoLLM, CallableLLM
   pipeline.py      RAGPipeline: ingest -> retrieve -> prompt -> answer
-tests/             43 unittest tests, stdlib only
+tests/             51 unittest tests, stdlib only
 examples/          offline end-to-end demo with a small markdown corpus
 ```
 
@@ -102,3 +102,11 @@ heavily. Hybrid metadata filters apply to both component rankings.
 ## License
 
 MIT
+
+### Chunking and ingest rules
+
+Chunkers never emit a trailing chunk that is wholly contained in the previous
+one: once a window reaches the end of the text (or the last sentence), chunking
+stops, so overlap does not produce duplicate retrieval hits. `RAGPipeline.ingest`
+requires `metadatas` to match `texts` in length (otherwise `ValueError`, before
+anything is added) and stores a copy of each metadata dict.
