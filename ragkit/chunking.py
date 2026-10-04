@@ -21,6 +21,8 @@ def fixed_size_chunks(text: str, chunk_size: int = 500, overlap: int = 50) -> Li
         chunk = text[start:start + chunk_size].strip()
         if chunk:
             chunks.append(chunk)
+        if start + chunk_size >= len(text):
+            break  # this window reached the end; later ones would only repeat its tail
     return chunks
 
 
@@ -43,6 +45,8 @@ def sentence_chunks(text: str, max_sentences: int = 4, overlap_sentences: int = 
         chunk = " ".join(sentences[start:start + max_sentences]).strip()
         if chunk:
             chunks.append(chunk)
+        if start + max_sentences >= len(sentences):
+            break  # this window reached the last sentence; no repeat-only tail chunk
     return chunks
 
 
