@@ -30,13 +30,15 @@ class RAGPipeline:
         self._counter = 0
 
     def ingest(self, texts: List[str], metadatas: Optional[List[Dict]] = None) -> List[str]:
+        if metadatas is not None and len(metadatas) != len(texts):
+            raise ValueError("metadatas must have the same length as texts")
         ids = []
         for i, text in enumerate(texts):
             if not text or not text.strip():
                 continue
             self._counter += 1
             doc_id = f"doc-{self._counter}"
-            metadata = (metadatas or [{}] * len(texts))[i]
+            metadata = dict(metadatas[i]) if metadatas is not None else {}
             self.retriever.add(Document(id=doc_id, text=text, metadata=metadata))
             ids.append(doc_id)
         return ids
