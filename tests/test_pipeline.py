@@ -58,5 +58,29 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(out["sources"][0]["metadata"], {"source": "handbook.pdf"})
 
 
+class IngestMetadataTests(unittest.TestCase):
+    def test_mismatched_metadata_length_is_rejected_before_anything_is_added(self):
+        pipe = RAGPipeline(BM25Retriever(), EchoLLM())
+        with self.assertRaisesRegex(ValueError, "same length"):
+            pipe.ingest(["alpha", "beta"], [{"source": "a"}])
+        self.assertEqual(pipe.retrieve("alpha"), [])
+        self.assertEqual(pipe.ingest(["alpha"]), ["doc-1"])
+
+    def test_metadata_is_copied_per_document(self):
+        pipe = RAGPipeline(BM25Retriever(), EchoLLM())
+        shared = {"source": "notes"}
+        pipe.ingest(["alpha one", "alpha two"], [shared, shared])
+        shared["source"] = "changed"
+        sources = pipe.query("alpha", k=2)["sources"]
+        self.assertEqual([s["metadata"] for s in sources], [{"source": "notes"}] * 2)
+
+    def test_documents_without_metadata_get_independent_dicts(self):
+        pipe = RAGPipeline(BM25Retriever(), EchoLLM())
+        pipe.ingest(["alpha one", "alpha two"])
+        first, second = [r.document for r in pipe.retrieve("alpha", k=2)]
+        first.metadata["tag"] = "x"
+        self.assertEqual(second.metadata, {})
+
+
 if __name__ == "__main__":
     unittest.main()
