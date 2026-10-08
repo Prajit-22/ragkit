@@ -73,7 +73,7 @@ ragkit/
   retrieval.py     BM25Retriever, VectorRetriever, HybridRetriever (RRF)
   llm.py           LLM protocol, EchoLLM, CallableLLM
   pipeline.py      RAGPipeline: ingest -> retrieve -> prompt -> answer
-tests/             51 unittest tests, stdlib only
+tests/             58 unittest tests, stdlib only
 examples/          offline end-to-end demo with a small markdown corpus
 ```
 
@@ -102,6 +102,15 @@ heavily. Hybrid metadata filters apply to both component rankings.
 ## License
 
 MIT
+
+### Tokenization
+
+`tokenize` lowercases, NFC-normalizes, and keeps letters, digits, combining
+marks, and apostrophes from any script, so accented Latin text and Indic
+scripts index as whole words. Scripts written without spaces (Chinese,
+Japanese) come back as one token per unbroken run; supply your own segmenter
+if you need word-level matching there. BM25 and the hashing and TF-IDF
+embedders all share this tokenizer.
 
 ### Chunking and ingest rules
 
