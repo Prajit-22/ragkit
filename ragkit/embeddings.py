@@ -7,14 +7,33 @@ An embedder maps text to a dense vector. ``HashingEmbedder`` and
 
 import hashlib
 import math
-import re
+import unicodedata
 from typing import List, Protocol, Sequence
 
-_WORD_RE = re.compile(r"[a-z0-9']+")
+
+def _is_token_char(char: str) -> bool:
+    # Letters and digits in any script, combining marks (accents, Indic vowel
+    # signs), and apostrophes stay inside a token. Everything else splits.
+    return char == "'" or char.isalnum() or unicodedata.category(char).startswith("M")
 
 
 def tokenize(text: str) -> List[str]:
-    return _WORD_RE.findall(text.lower())
+    """Lowercase, NFC-normalize, and split into word tokens in any script.
+
+    Text in scripts without spaces between words (Chinese, Japanese) comes
+    back as one token per unbroken run; bring a segmenter if you need more.
+    """
+    tokens: List[str] = []
+    current: List[str] = []
+    for char in unicodedata.normalize("NFC", text).lower():
+        if _is_token_char(char):
+            current.append(char)
+        elif current:
+            tokens.append("".join(current))
+            current = []
+    if current:
+        tokens.append("".join(current))
+    return tokens
 
 
 class Embedder(Protocol):
