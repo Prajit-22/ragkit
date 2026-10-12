@@ -73,7 +73,7 @@ ragkit/
   retrieval.py     BM25Retriever, VectorRetriever, HybridRetriever (RRF)
   llm.py           LLM protocol, EchoLLM, CallableLLM
   pipeline.py      RAGPipeline: ingest -> retrieve -> prompt -> answer
-tests/             58 unittest tests, stdlib only
+tests/             65 unittest tests, stdlib only
 examples/          offline end-to-end demo with a small markdown corpus
 ```
 
@@ -85,7 +85,7 @@ python -m unittest discover -s tests
 
 ## Design notes
 
-- `EchoLLM` answers extractively from the retrieved context, so tests and demos are deterministic and can never hallucinate.
+- `EchoLLM` answers extractively from the retrieved context, so tests and demos are deterministic and can never hallucinate. It quotes the first sentence of the context block, which runs from the first `Context:` to the last `Question:` line of the prompt; only the `- ` bullet prefix is removed, so values such as `-40` survive intact.
 - `HashingEmbedder` uses feature hashing over tokens - retrieval quality is below a neural embedder, but the interface and pipeline are identical, so swapping in a real embedder is a two-line change.
 - BM25 filters out zero-score documents; vector search returns nearest neighbors by cosine similarity; the hybrid retriever fuses both rankings with reciprocal rank fusion (k=60).
 
