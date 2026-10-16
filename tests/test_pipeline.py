@@ -84,3 +84,50 @@ class IngestMetadataTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PipelineDeleteTests(unittest.TestCase):
+    def setUp(self):
+        from ragkit import HashingEmbedder, HybridRetriever, VectorRetriever
+        self.pipe = RAGPipeline(BM25Retriever(), EchoLLM())
+        self.ids = self.pipe.ingest([
+            "Python lists preserve insertion order.",
+            "BM25 ranks documents by term frequency.",
+            "Cosine similarity compares vector directions.",
+        ])
+        hybrid = HybridRetriever(
+            BM25Retriever(), VectorRetriever(HashingEmbedder(dimensions=64))
+        )
+        self.hybrid_pipe = RAGPipeline(hybrid, EchoLLM())
+        self.hybrid_ids = self.hybrid_pipe.ingest([
+            "Python lists preserve insertion order.",
+            "BM25 ranks documents by term frequency.",
+        ])
+
+    def test_delete_returns_only_ids_that_existed(self):
+        self.assertEqual(
+            self.pipe.delete([self.ids[0], "doc-999", self.ids[2]]),
+            [self.ids[0], self.ids[2]],
+        )
+
+    def test_deleted_document_stops_appearing_in_retrieval(self):
+        self.pipe.delete([self.ids[0]])
+        texts = [r.document.text for r in self.pipe.retrieve("insertion order", k=3)]
+        self.assertNotIn("Python lists preserve insertion order.", texts)
+
+    def test_deleting_everything_restores_honest_empty_answer(self):
+        self.pipe.delete(self.ids)
+        out = self.pipe.query("insertion order")
+        self.assertEqual(out["answer"], "I don't have enough context to answer that.")
+        self.assertEqual(out["sources"], [])
+
+    def test_delete_is_idempotent(self):
+        self.assertEqual(self.pipe.delete([self.ids[1]]), [self.ids[1]])
+        self.assertEqual(self.pipe.delete([self.ids[1]]), [])
+
+    def test_delete_works_through_hybrid_retriever(self):
+        self.assertEqual(self.hybrid_pipe.delete([self.hybrid_ids[0]]), [self.hybrid_ids[0]])
+        texts = [r.document.text for r in self.hybrid_pipe.retrieve("insertion order", k=2)]
+        self.assertNotIn("Python lists preserve insertion order.", texts)
+        self.assertEqual(len(self.hybrid_pipe.retriever.lexical), 1)
+        self.assertEqual(len(self.hybrid_pipe.retriever.dense), 1)
