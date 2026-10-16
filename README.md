@@ -21,7 +21,7 @@ generate - while staying runnable anywhere Python runs, including CI.
 - **BM25 retriever** - Okapi BM25 with document-length normalization and metadata filters.
 - **Vector retriever** - in-memory cosine-similarity store over any embedder; ships with deterministic `HashingEmbedder` and corpus-fit `TfIdfEmbedder`.
 - **Hybrid retriever** - reciprocal rank fusion over lexical + dense rankings.
-- **RAG pipeline** - ingest, retrieve, prompt-build, generate; every answer carries its source chunks and scores for citation.
+- **RAG pipeline** - ingest, delete, retrieve, prompt-build, generate; every answer carries its source chunks and scores for citation.
 - **Pluggable LLM** - one-method protocol; `EchoLLM` answers offline for tests and demos.
 
 ## Quick start
@@ -73,7 +73,7 @@ ragkit/
   retrieval.py     BM25Retriever, VectorRetriever, HybridRetriever (RRF)
   llm.py           LLM protocol, EchoLLM, CallableLLM
   pipeline.py      RAGPipeline: ingest -> retrieve -> prompt -> answer
-tests/             65 unittest tests, stdlib only
+tests/             70 unittest tests, stdlib only
 examples/          offline end-to-end demo with a small markdown corpus
 ```
 
@@ -119,3 +119,6 @@ one: once a window reaches the end of the text (or the last sentence), chunking
 stops, so overlap does not produce duplicate retrieval hits. `RAGPipeline.ingest`
 requires `metadatas` to match `texts` in length (otherwise `ValueError`, before
 anything is added) and stores a copy of each metadata dict.
+`RAGPipeline.delete` removes ingested documents by id and returns the ids it
+actually removed, so it is safe to retry and easy to reconcile after
+re-ingesting a changed source.
