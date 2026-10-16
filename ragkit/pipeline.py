@@ -43,6 +43,15 @@ class RAGPipeline:
             ids.append(doc_id)
         return ids
 
+    def delete(self, document_ids: List[str]) -> List[str]:
+        """Remove ingested documents by id.
+
+        Returns the ids that were actually present and removed, so callers
+        can reconcile after re-ingesting a changed source. Unknown ids are
+        skipped, which makes delete safe to retry.
+        """
+        return [doc_id for doc_id in document_ids if self.retriever.delete(doc_id)]
+
     def retrieve(self, question: str, k: int = 4,
                  metadata_filter: Optional[Dict] = None) -> List[SearchResult]:
         return self.retriever.search(question, k=k, metadata_filter=metadata_filter)
