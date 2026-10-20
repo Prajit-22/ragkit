@@ -43,6 +43,29 @@ class VectorStoreTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.store.add(Document("x", "x"), [])
 
+    def test_mismatched_dimensions_rejected_at_add_time(self):
+        with self.assertRaisesRegex(ValueError, "dimension"):
+            self.store.add(Document("x", "x"), [1.0, 0.0, 0.0])
+        # The bad add must not partially replace an existing document either.
+        with self.assertRaisesRegex(ValueError, "dimension"):
+            self.store.add(Document("a", "alpha"), [1.0, 0.0, 0.0])
+        self.assertEqual(self.store.get("a").text, "alpha")
+
+    def test_replacing_the_only_vector_can_change_dimensions(self):
+        store = InMemoryVectorStore()
+        store.add(Document("a", "alpha"), [1.0, 0.0])
+        store.add(Document("a", "alpha again"), [1.0, 0.0, 0.0])
+        store.add(Document("b", "beta"), [0.0, 1.0, 0.0])
+        with self.assertRaisesRegex(ValueError, "dimension"):
+            store.add(Document("c", "gamma"), [1.0, 0.0])
+
+    def test_delete_then_readd_can_change_dimensions(self):
+        store = InMemoryVectorStore()
+        store.add(Document("a", "alpha"), [1.0, 0.0])
+        store.delete("a")
+        store.add(Document("b", "beta"), [1.0, 0.0, 0.0])
+        self.assertEqual(len(store.search([1.0, 0.0, 0.0])), 1)
+
 
 if __name__ == "__main__":
     unittest.main()
