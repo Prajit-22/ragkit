@@ -42,6 +42,13 @@ class InMemoryVectorStore:
     def add(self, document: Document, vector: Sequence[float]) -> None:
         if not vector:
             raise ValueError("vector must not be empty")
+        # All vectors in the store must share one dimension. Check at insert
+        # time so a bad vector fails here, not mid-search inside cosine math.
+        others = [v for doc_id, v in self._vectors.items() if doc_id != document.id]
+        if others and len(vector) != len(others[0]):
+            raise ValueError(
+                f"vector dimension {len(vector)} does not match the store's existing dimension {len(others[0])}"
+            )
         self._documents[document.id] = document
         self._vectors[document.id] = list(vector)
 
