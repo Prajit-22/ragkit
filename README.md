@@ -73,7 +73,7 @@ ragkit/
   retrieval.py     BM25Retriever, VectorRetriever, HybridRetriever (RRF)
   llm.py           LLM protocol, EchoLLM, CallableLLM
   pipeline.py      RAGPipeline: ingest -> retrieve -> prompt -> answer
-tests/             70 unittest tests, stdlib only
+tests/             73 unittest tests, stdlib only
 examples/          offline end-to-end demo with a small markdown corpus
 ```
 
@@ -94,6 +94,11 @@ python -m unittest discover -s tests
 `VectorRetriever(embedder, store=store)` uses the exact store you pass in,
 including an empty store. Adding or deleting through the retriever changes
 that same store. Omit `store` to get a fresh, independent in-memory store.
+
+All vectors in a store must share one dimension: `add` rejects a mismatched
+vector at insert time with a clear error instead of failing mid-search.
+Replacing the only stored vector (or adding after deleting all) re-dimensions
+the store.
 
 All retrievers require `k > 0`. `HybridRetriever` requires `rrf_k >= 0`;
 the default is 60. A zero constant is valid, but weights the first rank more
