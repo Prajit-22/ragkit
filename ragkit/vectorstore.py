@@ -75,3 +75,45 @@ class InMemoryVectorStore:
             scored.append(SearchResult(document, cosine_similarity(query_vector, vector)))
         scored.sort(key=lambda r: r.score, reverse=True)
         return scored[:k]
+
+    def search_mmr(self, query_vector: Sequence[float], k: int = 4,
+                   fetch_k: Optional[int] = None, lambda_mult: float = 0.5,
+                   metadata_filter: Optional[Dict] = None) -> List[SearchResult]:
+        """Maximal marginal relevance: trade some relevance for diversity.
+
+        Candidates come from a plain top-``fetch_k`` search; each pick then
+        maximizes ``lambda_mult * relevance - (1 - lambda_mult) * redundancy``,
+        where redundancy is the candidate's highest similarity to anything
+        already picked. ``lambda_mult=1`` reproduces plain ``search`` ordering;
+        lower values push near-duplicate chunks out of the results. Returned
+        scores stay cosine similarity to the query - lambda only changes the
+        selection, not what a score means.
+        """
+        if k <= 0:
+            raise ValueError("k must be positive")
+        if not 0.0 <= lambda_mult <= 1.0:
+            raise ValueError("lambda_mult must be between 0 and 1")
+        if fetch_k is None:
+            fetch_k = max(k * 4, 20)
+        if fetch_k < k:
+            raise ValueError("fetch_k must be >= k")
+        pool = [
+            (result.document, self._vectors[result.document.id], result.score)
+            for result in self.search(query_vector, k=fetch_k, metadata_filter=metadata_filter)
+        ]
+        selected: List[SearchResult] = []
+        selected_vectors: List[List[float]] = []
+        while pool and len(selected) < k:
+            best_index, best_value = 0, None
+            for i, (document, vector, relevance) in enumerate(pool):
+                redundancy = max(
+                    (cosine_similarity(vector, chosen) for chosen in selected_vectors),
+                    default=0.0,
+                )
+                value = lambda_mult * relevance - (1 - lambda_mult) * redundancy
+                if best_value is None or value > best_value:
+                    best_index, best_value = i, value
+            document, vector, relevance = pool.pop(best_index)
+            selected.append(SearchResult(document, relevance))
+            selected_vectors.append(vector)
+        return selected
