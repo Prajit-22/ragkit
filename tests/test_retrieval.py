@@ -76,3 +76,28 @@ class HybridTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class VectorRetrieverMMRTests(unittest.TestCase):
+    class _TableEmbedder:
+        dimensions = 2
+
+        def __init__(self, table):
+            self.table = table
+
+        def embed(self, text):
+            return self.table[text]
+
+    def test_search_mmr_diversifies_through_the_embedder(self):
+        table = {
+            "query": [1.0, 0.2],
+            "near one": [1.0, 0.1],
+            "near two": [1.0, 0.0],
+            "far": [0.0, 1.0],
+        }
+        retriever = VectorRetriever(self._TableEmbedder(table))
+        retriever.add(Document("n1", "near one"))
+        retriever.add(Document("n2", "near two"))
+        retriever.add(Document("f", "far"))
+        results = retriever.search_mmr("query", k=2, lambda_mult=0.5)
+        self.assertEqual([r.document.id for r in results], ["n1", "f"])
