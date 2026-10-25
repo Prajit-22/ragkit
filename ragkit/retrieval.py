@@ -103,6 +103,12 @@ class VectorRetriever:
                metadata_filter: Optional[Dict] = None) -> List[SearchResult]:
         return self.store.search(self.embedder.embed(query), k=k, metadata_filter=metadata_filter)
 
+    def search_mmr(self, query: str, k: int = 4, fetch_k: Optional[int] = None,
+                   lambda_mult: float = 0.5, metadata_filter: Optional[Dict] = None) -> List[SearchResult]:
+        """MMR search: diversify the top-k against near-duplicate chunks."""
+        return self.store.search_mmr(self.embedder.embed(query), k=k, fetch_k=fetch_k,
+                                     lambda_mult=lambda_mult, metadata_filter=metadata_filter)
+
 
 class HybridRetriever:
     """Reciprocal-rank fusion of a lexical and a dense retriever."""
