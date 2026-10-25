@@ -67,5 +67,50 @@ class VectorStoreTests(unittest.TestCase):
         self.assertEqual(len(store.search([1.0, 0.0, 0.0])), 1)
 
 
+
+class VectorStoreMMRTests(unittest.TestCase):
+    def setUp(self):
+        self.store = InMemoryVectorStore()
+        self.store.add(Document("a", "alpha", {"kind": "near"}), [1.0, 0.0])
+        self.store.add(Document("b", "beta", {"kind": "near"}), [1.0, 0.1])
+        self.store.add(Document("c", "gamma", {"kind": "far"}), [0.0, 1.0])
+        self.query = [1.0, 0.2]
+
+    def test_plain_search_ranks_near_duplicates_together(self):
+        results = self.store.search(self.query, k=3)
+        self.assertEqual([r.document.id for r in results], ["b", "a", "c"])
+
+    def test_mmr_diversifies_the_second_pick(self):
+        results = self.store.search_mmr(self.query, k=2, lambda_mult=0.5)
+        self.assertEqual([r.document.id for r in results], ["b", "c"])
+
+    def test_lambda_one_reproduces_plain_search_order(self):
+        plain = [r.document.id for r in self.store.search(self.query, k=3)]
+        mmr = [r.document.id for r in self.store.search_mmr(self.query, k=3, lambda_mult=1.0)]
+        self.assertEqual(plain, mmr)
+
+    def test_mmr_respects_metadata_filter(self):
+        results = self.store.search_mmr(self.query, k=2, lambda_mult=0.5,
+                                        metadata_filter={"kind": "near"})
+        self.assertEqual([r.document.id for r in results], ["b", "a"])
+
+    def test_mmr_scores_are_query_similarities(self):
+        results = self.store.search_mmr(self.query, k=2, lambda_mult=0.5)
+        self.assertAlmostEqual(results[0].score, cosine_similarity(self.query, [1.0, 0.1]))
+        self.assertAlmostEqual(results[1].score, cosine_similarity(self.query, [0.0, 1.0]))
+
+    def test_mmr_rejects_bad_arguments(self):
+        with self.assertRaisesRegex(ValueError, "k must be positive"):
+            self.store.search_mmr(self.query, k=0)
+        with self.assertRaisesRegex(ValueError, "lambda_mult"):
+            self.store.search_mmr(self.query, k=2, lambda_mult=-0.1)
+        with self.assertRaisesRegex(ValueError, "lambda_mult"):
+            self.store.search_mmr(self.query, k=2, lambda_mult=1.1)
+        with self.assertRaisesRegex(ValueError, "fetch_k"):
+            self.store.search_mmr(self.query, k=3, fetch_k=2)
+
+    def test_mmr_on_empty_store_returns_empty(self):
+        self.assertEqual(InMemoryVectorStore().search_mmr(self.query, k=2), [])
+
 if __name__ == "__main__":
     unittest.main()
