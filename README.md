@@ -20,6 +20,7 @@ generate - while staying runnable anywhere Python runs, including CI.
 - **Chunking** - fixed-size windows with overlap, or sentence-aware chunks that never split a sentence.
 - **BM25 retriever** - Okapi BM25 with document-length normalization and metadata filters.
 - **Vector retriever** - in-memory cosine-similarity store over any embedder; ships with deterministic `HashingEmbedder` and corpus-fit `TfIdfEmbedder`.
+- **MMR diversification** - maximal marginal relevance on vector search trades a tunable share of relevance for diversity, so near-duplicate chunks stop filling the top-k.
 - **Hybrid retriever** - reciprocal rank fusion over lexical + dense rankings.
 - **RAG pipeline** - ingest, delete, retrieve, prompt-build, generate; every answer carries its source chunks and scores for citation.
 - **Pluggable LLM** - one-method protocol; `EchoLLM` answers offline for tests and demos.
@@ -73,7 +74,7 @@ ragkit/
   retrieval.py     BM25Retriever, VectorRetriever, HybridRetriever (RRF)
   llm.py           LLM protocol, EchoLLM, CallableLLM
   pipeline.py      RAGPipeline: ingest -> retrieve -> prompt -> answer
-tests/             73 unittest tests, stdlib only
+tests/             81 unittest tests, stdlib only
 examples/          offline end-to-end demo with a small markdown corpus
 ```
 
@@ -99,6 +100,16 @@ All vectors in a store must share one dimension: `add` rejects a mismatched
 vector at insert time with a clear error instead of failing mid-search.
 Replacing the only stored vector (or adding after deleting all) re-dimensions
 the store.
+
+`VectorRetriever.search_mmr` (and the store's `search_mmr`) applies maximal
+marginal relevance over a plain top-`fetch_k` candidate pool: each pick
+maximizes `lambda_mult * relevance - (1 - lambda_mult) * redundancy`, where
+redundancy is the candidate's highest similarity to anything already picked.
+`lambda_mult` ranges 0..1 (default 0.5); `lambda_mult=1` reproduces plain
+search ordering, and lower values push near-duplicates out of the results.
+`fetch_k` defaults to `max(k * 4, 20)` and must be at least `k`. Returned
+scores stay cosine similarity to the query - lambda changes the selection,
+not what a score means. Metadata filters restrict the candidate pool.
 
 All retrievers require `k > 0`. `HybridRetriever` requires `rrf_k >= 0`;
 the default is 60. A zero constant is valid, but weights the first rank more
