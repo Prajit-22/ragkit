@@ -56,6 +56,25 @@ class RAGPipeline:
                  metadata_filter: Optional[Dict] = None) -> List[SearchResult]:
         return self.retriever.search(question, k=k, metadata_filter=metadata_filter)
 
+    def retrieve_mmr(self, question: str, k: int = 4, fetch_k: Optional[int] = None,
+                     lambda_mult: float = 0.5,
+                     metadata_filter: Optional[Dict] = None) -> List[SearchResult]:
+        """Retrieve with MMR diversification, when the retriever supports it.
+
+        Only retrievers with a ``search_mmr`` method (today: ``VectorRetriever``)
+        can diversify. Any other retriever raises ``TypeError`` here instead of
+        silently falling back to plain search, so a caller never believes
+        results were diversified when they were not.
+        """
+        search_mmr = getattr(self.retriever, "search_mmr", None)
+        if search_mmr is None:
+            raise TypeError(
+                f"{type(self.retriever).__name__} does not support MMR search; "
+                "use a VectorRetriever or call retrieve() instead"
+            )
+        return search_mmr(question, k=k, fetch_k=fetch_k, lambda_mult=lambda_mult,
+                          metadata_filter=metadata_filter)
+
     def build_prompt(self, question: str, sources: List[SearchResult]) -> str:
         context = "\n".join(f"- {result.document.text}" for result in sources)
         return self.prompt_template.format(context=context or "(none)", question=question)
@@ -63,6 +82,17 @@ class RAGPipeline:
     def query(self, question: str, k: int = 4,
               metadata_filter: Optional[Dict] = None) -> Dict:
         sources = self.retrieve(question, k=k, metadata_filter=metadata_filter)
+        return self._answer(question, sources)
+
+    def query_mmr(self, question: str, k: int = 4, fetch_k: Optional[int] = None,
+                  lambda_mult: float = 0.5,
+                  metadata_filter: Optional[Dict] = None) -> Dict:
+        """Query with MMR-diversified sources. Same result shape as ``query``."""
+        sources = self.retrieve_mmr(question, k=k, fetch_k=fetch_k,
+                                    lambda_mult=lambda_mult, metadata_filter=metadata_filter)
+        return self._answer(question, sources)
+
+    def _answer(self, question: str, sources: List[SearchResult]) -> Dict:
         prompt = self.build_prompt(question, sources)
         answer = self.llm.generate(prompt)
         return {
