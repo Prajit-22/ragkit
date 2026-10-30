@@ -1,7 +1,7 @@
 import unittest
 
-from ragkit import (BM25Retriever, CallableLLM, EchoLLM, RAGPipeline,
-                    sentence_chunks)
+from ragkit import (BM25Retriever, CallableLLM, EchoLLM, HashingEmbedder,
+                    RAGPipeline, VectorRetriever, sentence_chunks)
 
 CORPUS = [
     "RAG combines retrieval with generation. The retriever finds relevant chunks. The LLM answers using only those chunks.",
@@ -131,3 +131,53 @@ class PipelineDeleteTests(unittest.TestCase):
         self.assertNotIn("Python lists preserve insertion order.", texts)
         self.assertEqual(len(self.hybrid_pipe.retriever.lexical), 1)
         self.assertEqual(len(self.hybrid_pipe.retriever.dense), 1)
+class PipelineMmrTests(unittest.TestCase):
+    def setUp(self):
+        self.pipe = RAGPipeline(VectorRetriever(HashingEmbedder()), EchoLLM())
+        self.pipe.ingest([
+            "A rollback plan lets a failed deploy revert quickly.",
+            "A rollback plan lets a failed deploy revert quickly and safely.",
+            "A rollback plan lets a failed deploy revert quickly and safely every time.",
+            "Composting turns kitchen scraps into garden soil.",
+        ])
+
+    def test_query_mmr_diversifies_near_duplicate_sources(self):
+        plain = self.pipe.query("deploy rollback plan", k=2)["sources"]
+        self.assertTrue(all("rollback" in s["text"] for s in plain))
+        mmr = self.pipe.query_mmr("deploy rollback plan", k=2, lambda_mult=0.3)["sources"]
+        self.assertIn("Composting turns kitchen scraps into garden soil.",
+                      [s["text"] for s in mmr])
+
+    def test_query_mmr_result_shape_matches_query(self):
+        out = self.pipe.query_mmr("deploy rollback plan", k=2)
+        self.assertEqual(sorted(out.keys()), ["answer", "prompt", "sources"])
+        self.assertTrue(out["answer"])
+        self.assertEqual({"id", "text", "score", "metadata"},
+                         set(out["sources"][0].keys()))
+        self.assertIn("Context:", out["prompt"])
+
+    def test_retrieve_mmr_lambda_one_matches_plain_ordering(self):
+        plain = [r.document.id for r in self.pipe.retrieve("deploy rollback plan", k=2)]
+        mmr = [r.document.id for r in
+               self.pipe.retrieve_mmr("deploy rollback plan", k=2, lambda_mult=1.0)]
+        self.assertEqual(plain, mmr)
+
+    def test_retrieve_mmr_rejects_fetch_k_below_k(self):
+        with self.assertRaisesRegex(ValueError, "fetch_k"):
+            self.pipe.retrieve_mmr("deploy rollback plan", k=2, fetch_k=1)
+
+    def test_mmr_requires_a_capable_retriever(self):
+        bm_pipe = RAGPipeline(BM25Retriever(), EchoLLM())
+        bm_pipe.ingest(["alpha beta gamma"])
+        with self.assertRaisesRegex(TypeError, "does not support MMR"):
+            bm_pipe.query_mmr("alpha")
+
+    def test_query_mmr_honors_metadata_filter(self):
+        pipe = RAGPipeline(VectorRetriever(HashingEmbedder()), EchoLLM())
+        pipe.ingest(
+            ["Rollback plans revert failed deploys.", "Rollback plans undo bad releases."],
+            metadatas=[{"team": "sre"}, {"team": "platform"}],
+        )
+        out = pipe.query_mmr("rollback plans", k=2, metadata_filter={"team": "sre"})
+        self.assertEqual(len(out["sources"]), 1)
+        self.assertEqual(out["sources"][0]["metadata"], {"team": "sre"})
