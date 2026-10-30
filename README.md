@@ -22,7 +22,7 @@ generate - while staying runnable anywhere Python runs, including CI.
 - **Vector retriever** - in-memory cosine-similarity store over any embedder; ships with deterministic `HashingEmbedder` and corpus-fit `TfIdfEmbedder`.
 - **MMR diversification** - maximal marginal relevance on vector search trades a tunable share of relevance for diversity, so near-duplicate chunks stop filling the top-k.
 - **Hybrid retriever** - reciprocal rank fusion over lexical + dense rankings.
-- **RAG pipeline** - ingest, delete, retrieve, prompt-build, generate; every answer carries its source chunks and scores for citation.
+- **RAG pipeline** - ingest, delete, retrieve (plain or MMR-diversified where the retriever supports it), prompt-build, generate; every answer carries its source chunks and scores for citation.
 - **Pluggable LLM** - one-method protocol; `EchoLLM` answers offline for tests and demos.
 
 ## Quick start
@@ -74,7 +74,7 @@ ragkit/
   retrieval.py     BM25Retriever, VectorRetriever, HybridRetriever (RRF)
   llm.py           LLM protocol, EchoLLM, CallableLLM
   pipeline.py      RAGPipeline: ingest -> retrieve -> prompt -> answer
-tests/             81 unittest tests, stdlib only
+tests/             87 unittest tests, stdlib only
 examples/          offline end-to-end demo with a small markdown corpus
 ```
 
@@ -110,6 +110,9 @@ search ordering, and lower values push near-duplicates out of the results.
 `fetch_k` defaults to `max(k * 4, 20)` and must be at least `k`. Returned
 scores stay cosine similarity to the query - lambda changes the selection,
 not what a score means. Metadata filters restrict the candidate pool.
+`RAGPipeline.retrieve_mmr` and `RAGPipeline.query_mmr` expose the same
+diversification at the pipeline level; a retriever without `search_mmr`
+raises `TypeError` there instead of silently degrading to plain search.
 
 All retrievers require `k > 0`. `HybridRetriever` requires `rrf_k >= 0`;
 the default is 60. A zero constant is valid, but weights the first rank more
