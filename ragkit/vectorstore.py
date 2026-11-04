@@ -1,5 +1,6 @@
 """In-memory vector store with cosine similarity search."""
 
+import json
 import math
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Sequence
@@ -60,6 +61,65 @@ class InMemoryVectorStore:
 
     def get(self, document_id: str) -> Optional[Document]:
         return self._documents.get(document_id)
+
+    def to_dict(self) -> Dict:
+        """Snapshot the store as plain JSON-serializable data.
+
+        Documents travel with their vectors, so a loaded store needs no
+        embedder to be searchable again.
+        """
+        return {
+            "version": 1,
+            "documents": [
+                {
+                    "id": document.id,
+                    "text": document.text,
+                    "metadata": document.metadata,
+                    "vector": self._vectors[document.id],
+                }
+                for document in self._documents.values()
+            ],
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict) -> "InMemoryVectorStore":
+        """Rebuild a store from ``to_dict`` output.
+
+        Every entry goes back through ``add``, so the dimension rule is
+        enforced on load as well; a malformed snapshot raises ValueError
+        instead of producing a half-loaded store.
+        """
+        if not isinstance(data, dict) or data.get("version") != 1:
+            raise ValueError("not a ragkit vector-store snapshot (expected version 1)")
+        documents = data.get("documents")
+        if not isinstance(documents, list):
+            raise ValueError("snapshot is missing its documents list")
+        store = cls()
+        for entry in documents:
+            try:
+                document = Document(
+                    id=entry["id"],
+                    text=entry["text"],
+                    metadata=dict(entry.get("metadata") or {}),
+                )
+                vector = entry["vector"]
+            except (KeyError, TypeError):
+                raise ValueError("snapshot has a malformed document entry")
+            store.add(document, vector)
+        return store
+
+    def save(self, path: str) -> None:
+        """Write the store to a JSON file (see :meth:`load`)."""
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump(self.to_dict(), handle)
+
+    @classmethod
+    def load(cls, path: str) -> "InMemoryVectorStore":
+        """Load a store written by :meth:`save`. A missing or unreadable
+        file raises the usual OSError; bad JSON or a wrong shape raises
+        ValueError."""
+        with open(path, encoding="utf-8") as handle:
+            return cls.from_dict(json.load(handle))
 
     def search(self, query_vector: Sequence[float], k: int = 4,
                metadata_filter: Optional[Dict] = None) -> List[SearchResult]:
