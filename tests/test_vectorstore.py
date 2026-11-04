@@ -1,3 +1,5 @@
+import os
+import tempfile
 import unittest
 
 from ragkit import Document, InMemoryVectorStore, cosine_similarity
@@ -114,3 +116,64 @@ class VectorStoreMMRTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class VectorStorePersistenceTests(unittest.TestCase):
+    def setUp(self):
+        self.store = InMemoryVectorStore()
+        self.store.add(Document("a", "deployment rollback steps", {"source": "runbook.md"}),
+                       [1.0, 0.0, 0.5])
+        self.store.add(Document("b", "composting kitchen scraps", {"source": "garden.md"}),
+                       [0.0, 1.0, 0.0])
+
+    def test_round_trip_preserves_search_results_exactly(self):
+        query = [0.9, 0.1, 0.4]
+        before = [(r.document.id, r.score) for r in self.store.search(query, k=2)]
+        restored = InMemoryVectorStore.from_dict(self.store.to_dict())
+        after = [(r.document.id, r.score) for r in restored.search(query, k=2)]
+        self.assertEqual(before, after)
+        self.assertEqual(len(restored), 2)
+
+    def test_round_trip_preserves_documents_and_metadata(self):
+        restored = InMemoryVectorStore.from_dict(self.store.to_dict())
+        doc = restored.get("a")
+        self.assertEqual(doc.text, "deployment rollback steps")
+        self.assertEqual(doc.metadata, {"source": "runbook.md"})
+        filtered = restored.search([1.0, 0.0, 0.5], k=2,
+                                   metadata_filter={"source": "runbook.md"})
+        self.assertEqual([r.document.id for r in filtered], ["a"])
+
+    def test_save_and_load_through_a_json_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "store.json")
+            self.store.save(path)
+            restored = InMemoryVectorStore.load(path)
+        self.assertEqual(len(restored), 2)
+        self.assertEqual(restored.get("b").text, "composting kitchen scraps")
+
+    def test_empty_store_round_trips_and_stays_usable(self):
+        empty = InMemoryVectorStore.from_dict(InMemoryVectorStore().to_dict())
+        self.assertEqual(len(empty), 0)
+        empty.add(Document("x", "fresh start"), [0.5, 0.5])
+        self.assertEqual(len(empty), 1)
+
+    def test_wrong_version_and_missing_documents_are_rejected(self):
+        with self.assertRaisesRegex(ValueError, "version 1"):
+            InMemoryVectorStore.from_dict({"version": 2, "documents": []})
+        with self.assertRaisesRegex(ValueError, "documents"):
+            InMemoryVectorStore.from_dict({"version": 1})
+        with self.assertRaisesRegex(ValueError, "version 1"):
+            InMemoryVectorStore.from_dict(["not", "a", "dict"])
+
+    def test_malformed_entries_are_rejected(self):
+        with self.assertRaisesRegex(ValueError, "malformed"):
+            InMemoryVectorStore.from_dict(
+                {"version": 1, "documents": [{"id": "a"}]})
+        # A dimension mismatch inside the snapshot fails at add time.
+        with self.assertRaisesRegex(ValueError, "dimension"):
+            InMemoryVectorStore.from_dict({
+                "version": 1,
+                "documents": [
+                    {"id": "a", "text": "one", "metadata": {}, "vector": [1.0, 0.0]},
+                    {"id": "b", "text": "two", "metadata": {}, "vector": [1.0]},
+                ],
+            })
