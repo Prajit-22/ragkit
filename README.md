@@ -18,7 +18,7 @@ generate - while staying runnable anywhere Python runs, including CI.
 ## Features
 
 - **Chunking** - fixed-size windows with overlap, or sentence-aware chunks that never split a sentence.
-- **BM25 retriever** - Okapi BM25 with document-length normalization and metadata filters.
+- **BM25 retriever** - Okapi BM25 with document-length normalization and metadata filters. Snapshots save to and load from JSON, so a lexical index survives between runs.
 - **Vector retriever** - in-memory cosine-similarity store over any embedder; ships with deterministic `HashingEmbedder` and corpus-fit `TfIdfEmbedder`. Stores snapshot to and load from JSON, so an index survives between runs.
 - **MMR diversification** - maximal marginal relevance on vector search trades a tunable share of relevance for diversity, so near-duplicate chunks stop filling the top-k.
 - **Hybrid retriever** - reciprocal rank fusion over lexical + dense rankings.
@@ -74,7 +74,7 @@ ragkit/
   retrieval.py     BM25Retriever, VectorRetriever, HybridRetriever (RRF)
   llm.py           LLM protocol, EchoLLM, CallableLLM
   pipeline.py      RAGPipeline: ingest -> retrieve -> prompt -> answer
-tests/             93 unittest tests, stdlib only
+tests/             100 unittest tests, stdlib only
 examples/          offline end-to-end demo with a small markdown corpus
 ```
 
@@ -118,6 +118,12 @@ raises `TypeError` there instead of silently degrading to plain search.
 store as JSON. Documents travel with their vectors, so a loaded store is
 searchable without an embedder; loading re-runs the dimension check, and a
 wrong-version or malformed snapshot raises `ValueError`.
+
+`BM25Retriever.save(path)` / `BM25Retriever.load(path)` persist a lexical
+index the same way. Only documents and the `k1`/`b` tuning travel; loading
+rebuilds the inverted index through the normal add path, so term statistics
+always match the documents. A wrong-version, mistuned, or malformed snapshot
+raises `ValueError`, and a missing file raises the usual `OSError`.
 
 All retrievers require `k > 0`. `HybridRetriever` requires `rrf_k >= 0`;
 the default is 60. A zero constant is valid, but weights the first rank more
