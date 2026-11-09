@@ -1,5 +1,6 @@
 """Retrievers: BM25 lexical search, vector search, and hybrid fusion."""
 
+import json
 import math
 from collections import Counter
 from typing import Dict, List, Optional, Sequence
@@ -46,6 +47,68 @@ class BM25Retriever:
         del self._doc_lengths[document_id]
         self._recompute_avg()
         return True
+
+    def to_dict(self) -> Dict:
+        """Snapshot documents and tuning as plain JSON-serializable data.
+
+        Only documents, ``k1`` and ``b`` travel; the inverted index is
+        rebuilt by :meth:`from_dict` through the normal ``add`` path, so a
+        snapshot can never drift from the index it loads into.
+        """
+        return {
+            "version": 1,
+            "k1": self.k1,
+            "b": self.b,
+            "documents": [
+                {"id": document.id, "text": document.text,
+                 "metadata": document.metadata}
+                for document in self._documents.values()
+            ],
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict) -> "BM25Retriever":
+        """Rebuild a retriever from :meth:`to_dict` output.
+
+        Every entry goes back through ``add``, so term frequencies,
+        document frequencies, and the average length are recomputed
+        exactly as if the documents had been indexed live; a malformed
+        snapshot raises ValueError instead of producing a half-loaded
+        retriever.
+        """
+        if not isinstance(data, dict) or data.get("version") != 1:
+            raise ValueError("not a ragkit BM25 snapshot (expected version 1)")
+        documents = data.get("documents")
+        if not isinstance(documents, list):
+            raise ValueError("snapshot is missing its documents list")
+        try:
+            retriever = cls(k1=data["k1"], b=data["b"])
+        except (KeyError, TypeError):
+            raise ValueError("snapshot is missing its k1/b tuning")
+        for entry in documents:
+            try:
+                document = Document(
+                    id=entry["id"],
+                    text=entry["text"],
+                    metadata=dict(entry.get("metadata") or {}),
+                )
+            except (KeyError, TypeError):
+                raise ValueError("snapshot has a malformed document entry")
+            retriever.add(document)
+        return retriever
+
+    def save(self, path: str) -> None:
+        """Write the retriever to a JSON file (see :meth:`load`)."""
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump(self.to_dict(), handle)
+
+    @classmethod
+    def load(cls, path: str) -> "BM25Retriever":
+        """Load a retriever written by :meth:`save`. A missing or unreadable
+        file raises the usual OSError; bad JSON or a wrong shape raises
+        ValueError."""
+        with open(path, encoding="utf-8") as handle:
+            return cls.from_dict(json.load(handle))
 
     def search(self, query: str, k: int = 4,
                metadata_filter: Optional[Dict] = None) -> List[SearchResult]:
