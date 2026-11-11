@@ -129,6 +129,14 @@ All retrievers require `k > 0`. `HybridRetriever` requires `rrf_k >= 0`;
 the default is 60. A zero constant is valid, but weights the first rank more
 heavily. Hybrid metadata filters apply to both component rankings.
 
+## Agent Skill
+
+This repo also ships as a portable Agent Skill at
+[`skill/doc-qa-toolkit/`](skill/doc-qa-toolkit) - a document Q&A CLI
+(`index` / `ask` / `status` / `reset`) plus the vendored toolkit, an offline
+9-check selftest, and SKILL.md instructions for AI agents. Works offline by
+default; no API keys required.
+
 ## License
 
 MIT
