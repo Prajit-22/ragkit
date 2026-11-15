@@ -62,6 +62,9 @@ class InMemoryVectorStore:
     def get(self, document_id: str) -> Optional[Document]:
         return self._documents.get(document_id)
 
+    def contains(self, document_id: str) -> bool:
+        return document_id in self._documents
+
     def to_dict(self) -> Dict:
         """Snapshot the store as plain JSON-serializable data.
 
