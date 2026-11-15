@@ -38,6 +38,12 @@ class RAGPipeline:
                 continue
             self._counter += 1
             doc_id = f"doc-{self._counter}"
+            while self.retriever.contains(doc_id):
+                # A retriever loaded from a snapshot can already hold ids this
+                # fresh pipeline never issued; skip past them instead of
+                # silently overwriting a loaded document.
+                self._counter += 1
+                doc_id = f"doc-{self._counter}"
             metadata = dict(metadatas[i]) if metadatas is not None else {}
             self.retriever.add(Document(id=doc_id, text=text, metadata=metadata))
             ids.append(doc_id)
