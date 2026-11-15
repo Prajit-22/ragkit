@@ -27,6 +27,12 @@ class BM25Tests(unittest.TestCase):
     def test_no_match_returns_empty(self):
         self.assertEqual(self.retriever.search("quantum entanglement", k=2), [])
 
+    def test_contains_tracks_add_and_delete(self):
+        self.assertTrue(self.retriever.contains("bm25"))
+        self.assertFalse(self.retriever.contains("nope"))
+        self.retriever.delete("bm25")
+        self.assertFalse(self.retriever.contains("bm25"))
+
     def test_metadata_filter(self):
         docs = [Document("x", "shared words here", {"lang": "en"}),
                 Document("y", "shared words here", {"lang": "hi"})]
@@ -174,3 +180,26 @@ class BM25PersistenceTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "malformed"):
             BM25Retriever.from_dict(
                 {"version": 1, "k1": 1.5, "b": 0.75, "documents": [{"id": "a"}]})
+
+
+class VectorContainsTests(unittest.TestCase):
+    def test_contains_tracks_add_and_delete(self):
+        retriever = VectorRetriever(HashingEmbedder())
+        retriever.add(DOCS[1])
+        self.assertTrue(retriever.contains("vec"))
+        self.assertFalse(retriever.contains("bm25"))
+        retriever.delete("vec")
+        self.assertFalse(retriever.contains("vec"))
+
+
+class HybridContainsTests(unittest.TestCase):
+    def test_contains_when_either_side_has_the_id(self):
+        lexical = BM25Retriever()
+        dense = VectorRetriever(HashingEmbedder())
+        hybrid = HybridRetriever(lexical, dense)
+        self.assertFalse(hybrid.contains("bm25"))
+        lexical.add(DOCS[0])
+        self.assertTrue(hybrid.contains("bm25"))
+        lexical.delete("bm25")
+        dense.add(DOCS[1])
+        self.assertTrue(hybrid.contains("vec"))
