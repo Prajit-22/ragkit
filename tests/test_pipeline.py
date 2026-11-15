@@ -1,7 +1,8 @@
 import unittest
 
-from ragkit import (BM25Retriever, CallableLLM, EchoLLM, HashingEmbedder,
-                    RAGPipeline, VectorRetriever, sentence_chunks)
+from ragkit import (BM25Retriever, CallableLLM, Document, EchoLLM,
+                    HashingEmbedder, InMemoryVectorStore, RAGPipeline,
+                    VectorRetriever, sentence_chunks)
 
 CORPUS = [
     "RAG combines retrieval with generation. The retriever finds relevant chunks. The LLM answers using only those chunks.",
@@ -181,3 +182,53 @@ class PipelineMmrTests(unittest.TestCase):
         out = pipe.query_mmr("rollback plans", k=2, metadata_filter={"team": "sre"})
         self.assertEqual(len(out["sources"]), 1)
         self.assertEqual(out["sources"][0]["metadata"], {"team": "sre"})
+
+
+class PipelineIngestIdCollisionTests(unittest.TestCase):
+    """A pipeline over a retriever loaded from a snapshot must not reuse the
+    snapshot's doc ids - before this, a fresh pipeline's counter restarted at
+    doc-1 and ingest silently overwrote loaded documents."""
+
+    def test_ingest_after_bm25_snapshot_skips_loaded_ids(self):
+        pipe = RAGPipeline(BM25Retriever(), EchoLLM())
+        pipe.ingest(["alpha first document", "beta second document"])
+        snapshot = pipe.retriever.to_dict()
+
+        loaded = BM25Retriever.from_dict(snapshot)
+        new_pipe = RAGPipeline(loaded, EchoLLM())
+        new_ids = new_pipe.ingest(["gamma third document"])
+
+        self.assertEqual(new_ids, ["doc-3"])
+        self.assertEqual(len(loaded), 3)
+        # The loaded documents were not overwritten.
+        self.assertEqual(loaded.to_dict()["documents"][0]["text"], "alpha first document")
+        results = loaded.search("alpha first", k=3)
+        self.assertEqual(results[0].document.id, "doc-1")
+
+    def test_ingest_after_vector_snapshot_skips_loaded_ids(self):
+        pipe = RAGPipeline(VectorRetriever(HashingEmbedder()), EchoLLM())
+        pipe.ingest(["alpha first document", "beta second document"])
+        snapshot = pipe.retriever.store.to_dict()
+
+        store = InMemoryVectorStore.from_dict(snapshot)
+        new_pipe = RAGPipeline(VectorRetriever(HashingEmbedder(), store), EchoLLM())
+        new_ids = new_pipe.ingest(["gamma third document"])
+
+        self.assertEqual(new_ids, ["doc-3"])
+        self.assertEqual(len(store), 3)
+        self.assertEqual(store.get("doc-1").text, "alpha first document")
+
+    def test_ids_stay_monotonic_after_skipping(self):
+        retriever = BM25Retriever()
+        retriever.add(Document("doc-1", "pre-existing document", {}))
+        pipe = RAGPipeline(retriever, EchoLLM())
+        self.assertEqual(pipe.ingest(["new one"]), ["doc-2"])
+        self.assertEqual(pipe.ingest(["new two"]), ["doc-3"])
+
+    def test_deleted_id_is_safe_to_reissue(self):
+        pipe = RAGPipeline(BM25Retriever(), EchoLLM())
+        pipe.ingest(["alpha first document"])
+        pipe.delete(["doc-1"])
+        # Counter already advanced past doc-1, so the next id is doc-2; the
+        # skip loop only matters for ids a loaded retriever still holds.
+        self.assertEqual(pipe.ingest(["beta second document"]), ["doc-2"])
