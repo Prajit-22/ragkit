@@ -74,7 +74,7 @@ ragkit/
   retrieval.py     BM25Retriever, VectorRetriever, HybridRetriever (RRF)
   llm.py           LLM protocol, EchoLLM, CallableLLM
   pipeline.py      RAGPipeline: ingest -> retrieve -> prompt -> answer
-tests/             100 unittest tests, stdlib only
+tests/             107 unittest tests, stdlib only
 examples/          offline end-to-end demo with a small markdown corpus
 ```
 
@@ -124,6 +124,13 @@ index the same way. Only documents and the `k1`/`b` tuning travel; loading
 rebuilds the inverted index through the normal add path, so term statistics
 always match the documents. A wrong-version, mistuned, or malformed snapshot
 raises `ValueError`, and a missing file raises the usual `OSError`.
+
+Ingest ids are collision-safe across snapshots. `RAGPipeline` numbers new
+documents `doc-N` from a local counter, and every retriever now answers
+`contains(document_id)`. When a pipeline sits on a retriever loaded from a
+snapshot, ingest skips past ids the snapshot already holds instead of
+silently overwriting a loaded document; within one pipeline the counter
+keeps moving forward, so ids stay unique and monotonic.
 
 All retrievers require `k > 0`. `HybridRetriever` requires `rrf_k >= 0`;
 the default is 60. A zero constant is valid, but weights the first rank more
