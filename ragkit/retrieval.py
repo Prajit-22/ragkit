@@ -48,6 +48,9 @@ class BM25Retriever:
         self._recompute_avg()
         return True
 
+    def contains(self, document_id: str) -> bool:
+        return document_id in self._documents
+
     def to_dict(self) -> Dict:
         """Snapshot documents and tuning as plain JSON-serializable data.
 
@@ -162,6 +165,9 @@ class VectorRetriever:
     def delete(self, document_id: str) -> bool:
         return self.store.delete(document_id)
 
+    def contains(self, document_id: str) -> bool:
+        return self.store.contains(document_id)
+
     def search(self, query: str, k: int = 4,
                metadata_filter: Optional[Dict] = None) -> List[SearchResult]:
         return self.store.search(self.embedder.embed(query), k=k, metadata_filter=metadata_filter)
@@ -189,6 +195,11 @@ class HybridRetriever:
 
     def delete(self, document_id: str) -> bool:
         return self.lexical.delete(document_id) | self.dense.delete(document_id)
+
+    def contains(self, document_id: str) -> bool:
+        # Either side holding the id is enough: re-adding it would overwrite
+        # that side's entry, so the id is not safe to reuse.
+        return self.lexical.contains(document_id) or self.dense.contains(document_id)
 
     def search(self, query: str, k: int = 4,
                metadata_filter: Optional[Dict] = None) -> List[SearchResult]:
