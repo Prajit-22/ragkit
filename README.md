@@ -21,7 +21,7 @@ generate - while staying runnable anywhere Python runs, including CI.
 - **BM25 retriever** - Okapi BM25 with document-length normalization and metadata filters. Snapshots save to and load from JSON, so a lexical index survives between runs.
 - **Vector retriever** - in-memory cosine-similarity store over any embedder; ships with deterministic `HashingEmbedder` and corpus-fit `TfIdfEmbedder`. Stores snapshot to and load from JSON, so an index survives between runs.
 - **MMR diversification** - maximal marginal relevance on vector search trades a tunable share of relevance for diversity, so near-duplicate chunks stop filling the top-k.
-- **Hybrid retriever** - reciprocal rank fusion over lexical + dense rankings.
+- **Hybrid retriever** - reciprocal rank fusion over lexical + dense rankings. The whole hybrid snapshots to and loads from one JSON file.
 - **RAG pipeline** - ingest, delete, retrieve (plain or MMR-diversified where the retriever supports it), prompt-build, generate; every answer carries its source chunks and scores for citation.
 - **Pluggable LLM** - one-method protocol; `EchoLLM` answers offline for tests and demos.
 
@@ -74,7 +74,7 @@ ragkit/
   retrieval.py     BM25Retriever, VectorRetriever, HybridRetriever (RRF)
   llm.py           LLM protocol, EchoLLM, CallableLLM
   pipeline.py      RAGPipeline: ingest -> retrieve -> prompt -> answer
-tests/             107 unittest tests, stdlib only
+tests/             114 unittest tests, stdlib only
 examples/          offline end-to-end demo with a small markdown corpus
 ```
 
@@ -124,6 +124,14 @@ index the same way. Only documents and the `k1`/`b` tuning travel; loading
 rebuilds the inverted index through the normal add path, so term statistics
 always match the documents. A wrong-version, mistuned, or malformed snapshot
 raises `ValueError`, and a missing file raises the usual `OSError`.
+
+`HybridRetriever.save(path)` / `HybridRetriever.load(path, embedder)` persist
+both halves plus `rrf_k` as one file, so the two sides can never drift into
+separate, mismatched snapshots. The embedder argument serves future adds and
+dense-side queries; the loaded vectors are searchable as they are. Loading
+rejects a snapshot whose lexical and dense halves hold different documents,
+and otherwise applies the same version and shape checks as the single-side
+snapshots above.
 
 Ingest ids are collision-safe across snapshots. `RAGPipeline` numbers new
 documents `doc-N` from a local counter, and every retriever now answers
