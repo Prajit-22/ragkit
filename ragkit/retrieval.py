@@ -214,3 +214,51 @@ class HybridRetriever:
                 documents[doc_id] = result.document
         ranked = sorted(fused.items(), key=lambda kv: kv[1], reverse=True)[:k]
         return [SearchResult(documents[doc_id], score) for doc_id, score in ranked]
+
+    def to_dict(self) -> Dict:
+        """Snapshot both sides of the hybrid as one document.
+
+        The lexical and dense halves travel together so a hybrid index is
+        persisted atomically; ``rrf_k`` travels with them.
+        """
+        return {
+            "version": 1,
+            "rrf_k": self.rrf_k,
+            "lexical": self.lexical.to_dict(),
+            "dense": self.dense.store.to_dict(),
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict, embedder: Embedder) -> "HybridRetriever":
+        """Rebuild a hybrid from :meth:`to_dict` output.
+
+        ``embedder`` serves future adds and dense-side queries; the loaded
+        vectors are searchable as they are. Both halves must hold the same
+        document ids - a snapshot written by :meth:`to_dict` always does -
+        or the snapshot is rejected instead of loading a split-brain index.
+        """
+        if not isinstance(data, dict) or data.get("version") != 1:
+            raise ValueError("not a ragkit hybrid snapshot (expected version 1)")
+        rrf_k = data.get("rrf_k")
+        if not isinstance(rrf_k, (int, float)) or isinstance(rrf_k, bool):
+            raise ValueError("snapshot is missing its rrf_k")
+        lexical = BM25Retriever.from_dict(data.get("lexical"))
+        store = InMemoryVectorStore.from_dict(data.get("dense"))
+        # Same-package access: comparing membership needs each side's document
+        # table, since contains() alone cannot enumerate ids.
+        if set(lexical._documents) != set(store._documents):
+            raise ValueError("hybrid snapshot sides hold different documents")
+        return cls(lexical, VectorRetriever(embedder, store), rrf_k=rrf_k)
+
+    def save(self, path: str) -> None:
+        """Write the hybrid to a JSON file (see :meth:`load`)."""
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump(self.to_dict(), handle)
+
+    @classmethod
+    def load(cls, path: str, embedder: Embedder) -> "HybridRetriever":
+        """Load a hybrid written by :meth:`save`. A missing or unreadable
+        file raises the usual OSError; bad JSON or a wrong shape raises
+        ValueError."""
+        with open(path, encoding="utf-8") as handle:
+            return cls.from_dict(json.load(handle), embedder)
