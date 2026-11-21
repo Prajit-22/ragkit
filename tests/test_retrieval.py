@@ -83,6 +83,66 @@ class HybridTests(unittest.TestCase):
         self.assertNotIn("rag", ids)
 
 
+class HybridPersistenceTests(unittest.TestCase):
+    def setUp(self):
+        self.hybrid = HybridRetriever(BM25Retriever(), VectorRetriever(HashingEmbedder()), rrf_k=10)
+        for doc in DOCS:
+            self.hybrid.add(doc)
+
+    def test_round_trip_preserves_fused_ranking_and_scores(self):
+        query = "retrieval augmented generation"
+        before = [(r.document.id, r.score) for r in self.hybrid.search(query, k=3)]
+        restored = HybridRetriever.from_dict(self.hybrid.to_dict(), HashingEmbedder())
+        after = [(r.document.id, r.score) for r in restored.search(query, k=3)]
+        self.assertEqual([doc_id for doc_id, _ in before],
+                         [doc_id for doc_id, _ in after])
+        for (_, score_a), (_, score_b) in zip(before, after):
+            self.assertAlmostEqual(score_a, score_b)
+
+    def test_round_trip_preserves_rrf_k(self):
+        restored = HybridRetriever.from_dict(self.hybrid.to_dict(), HashingEmbedder())
+        self.assertEqual(restored.rrf_k, 10)
+
+    def test_loaded_hybrid_accepts_new_documents(self):
+        restored = HybridRetriever.from_dict(self.hybrid.to_dict(), HashingEmbedder())
+        restored.add(Document("new", "a brand new fact about retrieval"))
+        self.assertTrue(restored.contains("new"))
+        # The new document is the only lexical hit, so fusion puts it first.
+        self.assertEqual(restored.search("brand new fact", k=1)[0].document.id, "new")
+
+    def test_save_and_load_through_a_json_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "hybrid.json")
+            self.hybrid.save(path)
+            with open(path, encoding="utf-8") as handle:
+                raw = json.load(handle)
+            self.assertEqual(raw["version"], 1)
+            self.assertEqual(raw["rrf_k"], 10)
+            restored = HybridRetriever.load(path, HashingEmbedder())
+        self.assertEqual(restored.search("apple pie oven", k=1)[0].document.id, "pie")
+
+    def test_load_missing_file_raises_oserror(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(OSError):
+                HybridRetriever.load(os.path.join(tmp, "absent.json"), HashingEmbedder())
+
+    def test_malformed_snapshots_are_rejected(self):
+        with self.assertRaisesRegex(ValueError, "version 1"):
+            HybridRetriever.from_dict({"version": 2}, HashingEmbedder())
+        with self.assertRaisesRegex(ValueError, "rrf_k"):
+            HybridRetriever.from_dict({"version": 1}, HashingEmbedder())
+        with self.assertRaisesRegex(ValueError, "rrf_k"):
+            HybridRetriever.from_dict({"version": 1, "rrf_k": True}, HashingEmbedder())
+        with self.assertRaisesRegex(ValueError, "BM25"):
+            HybridRetriever.from_dict({"version": 1, "rrf_k": 60}, HashingEmbedder())
+
+    def test_split_brain_snapshot_is_rejected(self):
+        data = self.hybrid.to_dict()
+        data["dense"]["documents"] = data["dense"]["documents"][:-1]
+        with self.assertRaisesRegex(ValueError, "different documents"):
+            HybridRetriever.from_dict(data, HashingEmbedder())
+
+
 if __name__ == "__main__":
     unittest.main()
 
